@@ -123,30 +123,21 @@ impl CGroup {
     }
 
     fn write_limits_file<P: AsRef<std::path::Path>>(&self, file: P, limit: &DMemLimit) {
-        let mut contents = String::new();
+        for (region, value) in limit {
+            let value_str = value.to_string();
+            let value_str = if *value == u64::MAX { "max" } else { value_str.as_str() };
 
-        for entry in limit {
-            contents.push_str(entry.0.as_str());
-            contents.push_str(" ");
-            if *entry.1 == u64::max_value() {
-                contents.push_str("max");
-            } else {
-                contents.push_str(entry.1.to_string().as_str());
-            }
-            contents.push('\n');
-        }
-
-        if let Err(e) = std::fs::write(file, contents) {
-            if e.kind() != std::io::ErrorKind::PermissionDenied {
-                println!("WARNING: Could not write dmem limit file: {}!", e);
+            let content = format!("{} {}", region, value_str);
+            if let Err(e) = std::fs::write(&file, content) {
+                if e.kind() != std::io::ErrorKind::PermissionDenied {
+                    println!("WARNING: Could not write dmem limit file: {}!", e);
+                }
             }
         }
     }
 
     fn limit_from_attribute(&self, attrib_name: &str) -> Option<DMemLimit> {
-        let mut file: PathBuf = self.path.clone();
-        file.push(attrib_name);
-        Self::parse_limits_file(file)
+        Self::parse_limits_file(self.path.join(attrib_name))
     }
 
     pub fn device_memory_capacity(&self) -> Option<DMemLimit> {
@@ -154,8 +145,6 @@ impl CGroup {
     }
 
     pub fn write_device_memory_low(&mut self, limit: &DMemLimit) {
-        let mut file: PathBuf = self.path.clone();
-        file.push("dmem.low");
-        self.write_limits_file(file, limit);
+        self.write_limits_file(self.path.join("dmem.low"), limit);
     }
 }

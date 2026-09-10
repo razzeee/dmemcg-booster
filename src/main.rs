@@ -154,7 +154,7 @@ fn activate_dmem_in_descendants(cgroup: &mut CGroup, system: bool) {
     }
 }
 
-fn handle_new_unit(connection: &Connection, unit_path: String, system: bool) {
+fn handle_new_unit(connection: &Connection, unit_path: String, system: bool) -> bool {
     let mut cgroup: Option<String> = None;
 
     /* All interfaces that have the ControlGroup property */
@@ -183,11 +183,16 @@ fn handle_new_unit(connection: &Connection, unit_path: String, system: bool) {
     }
 
     if let Some(cgroup_path) = cgroup {
+        // UnitNew can arrive before systemd assigns the cgroup. Retry next time.
+        if cgroup_path.is_empty() {
+            return false;
+        }
         let mut cgroup = String::from("/sys/fs/cgroup");
         cgroup.push_str(cgroup_path.as_str());
         let mut cgroup = CGroup::from_path(std::path::PathBuf::from(cgroup));
         propagate_dmem_activation(&mut cgroup, system);
     }
+    true
 }
 
 fn main() {
@@ -245,9 +250,6 @@ fn main() {
             .unwrap()
         {}
         let mut queue = unit_queue.lock().expect("Failed to retrieve unit queue!");
-        for unit in queue.iter() {
-            handle_new_unit(&connection, unit.to_string(), system);
-        }
-        queue.clear();
+        queue.retain(|unit| !handle_new_unit(&connection, unit.to_string(), system));
     }
 }
